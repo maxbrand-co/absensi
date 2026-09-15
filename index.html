@@ -17,24 +17,29 @@
     .camera-box { position: relative; width: 100%; margin-top: 10px; text-align: center; }
     video, img { width: 100%; max-height: 300px; object-fit: cover; border-radius: 8px; background: #222; border: 1px solid #ccc; }
     
-    /* CSS Efek Mirror pada Video Preview & Result Preview */
+    /* CSS Efek Mirror pada Video Preview */
     .mirror {
       transform: scaleX(-1);
       -webkit-transform: scaleX(-1);
     }
 
+    /* Tombol Toggle Mirror dibuat mencolok & jelas */
     .btn-mirror {
-      background: #6c757d;
+      background-color: #6c757d;
       color: white;
       border: none;
-      margin-top: 5px;
-      padding: 8px;
+      margin-top: 8px;
+      margin-bottom: 8px;
+      padding: 10px;
       font-size: 14px;
+      font-weight: bold;
       cursor: pointer;
+      display: block;
+      width: 100%;
     }
 
     /* Tombol Aksi */
-    .btn-group-foto { display: flex; gap: 10px; margin-top: 10px; }
+    .btn-group-foto { display: flex; gap: 10px; margin-top: 5px; }
     .btn-group-absen { display: flex; gap: 10px; margin-top: 20px; }
     
     .btn-foto { background-color: #007bff; color: white; font-weight: bold; border: none; cursor: pointer; }
@@ -71,8 +76,8 @@
       <canvas id="canvas" style="display:none;"></canvas>
     </div>
 
-    <!-- Tombol Mirror & Snapshot -->
-    <button type="button" id="btnToggleMirror" class="btn-mirror" onclick="toggleMirror()">🔄 Balikkan Kamera (Toggle Mirror)</button>
+    <!-- Tombol Mirror & Snapshot (Posisi di bawah kotak kamera) -->
+    <button type="button" id="btnToggleMirror" class="btn-mirror" onclick="toggleMirror()">🔄 Balikkan Kamera (Mirror)</button>
     
     <div class="btn-group-foto">
       <button type="button" id="btnAmbilFoto" onclick="ambilFoto()" class="btn-foto">📸 Ambil Foto</button>
@@ -180,7 +185,7 @@
       }
     }
 
-    // --- 4. Ambil Foto (Snapshot Canvas dengan Fitur Mirroring) ---
+    // --- 4. Ambil Foto (Snapshot Canvas) ---
     function ambilFoto() {
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
@@ -202,7 +207,7 @@
       canvas.width = width;
       canvas.height = height;
 
-      // Jika mode mirror aktif, flip canvas secara horizontal sebelum menggambar
+      // Jika mode mirror aktif, balikkan gambar di canvas
       if (isMirrored) {
         ctx.translate(width, 0);
         ctx.scale(-1, 1);
@@ -219,7 +224,7 @@
 
       btnAmbil.style.display = "none";
       btnUlang.style.display = "block";
-      btnToggleMirror.style.display = "none";
+      btnToggleMirror.style.display = "none"; // Sembunyikan tombol mirror saat foto sudah di-take
     }
 
     // --- 5. Foto Ulang ---
@@ -238,7 +243,7 @@
 
       btnAmbil.style.display = "block";
       btnUlang.style.display = "none";
-      btnToggleMirror.style.display = "block";
+      btnToggleMirror.style.display = "block"; // Tampilkan kembali tombol mirror
     }
 
     function getPositionOptions(highAccuracy = true) {
