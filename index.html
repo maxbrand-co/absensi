@@ -3,19 +3,38 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Presensi Karyawan</title>
+  <title>Aplikasi Absensi CV. Maxbrand</title>
   <style>
-    body { font-family: Arial, sans-serif; max-width: 500px; margin: 20px auto; padding: 15px; }
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 500px; margin: auto; }
+    
     .form-group { margin-bottom: 15px; }
     label { display: block; font-weight: bold; margin-bottom: 5px; }
-    select, button { width: 100%; padding: 12px; font-size: 16px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; }
     
-    /* Layout Kamera */
-    .camera-box { position: relative; width: 100%; margin: 10px 0; text-align: center; }
-    video, img { width: 100%; max-height: 300px; object-fit: cover; border-radius: 8px; border: 1px solid #ccc; }
+    select, button { width: 100%; padding: 12px; font-size: 16px; border-radius: 6px; box-sizing: border-box; }
+    select { border: 1px solid #ccc; }
     
+    /* Layout Kamera & Pratinjau */
+    .camera-box { position: relative; width: 100%; margin-top: 10px; text-align: center; }
+    video, img { width: 100%; max-height: 300px; object-fit: cover; border-radius: 8px; background: #222; border: 1px solid #ccc; }
+    
+    /* CSS Efek Mirror pada Video Preview & Result Preview */
+    .mirror {
+      transform: scaleX(-1);
+      -webkit-transform: scaleX(-1);
+    }
+
+    .btn-mirror {
+      background: #6c757d;
+      color: white;
+      border: none;
+      margin-top: 5px;
+      padding: 8px;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
     /* Tombol Aksi */
-    .btn-group-foto { display: flex; gap: 10px; margin-top: 8px; }
+    .btn-group-foto { display: flex; gap: 10px; margin-top: 10px; }
     .btn-group-absen { display: flex; gap: 10px; margin-top: 20px; }
     
     .btn-foto { background-color: #007bff; color: white; font-weight: bold; border: none; cursor: pointer; }
@@ -23,206 +42,292 @@
     
     .btn-masuk { background-color: #28a745; color: white; font-weight: bold; border: none; cursor: pointer; }
     .btn-pulang { background-color: #dc3545; color: white; font-weight: bold; border: none; cursor: pointer; }
+    
     button:disabled { background-color: #cccccc !important; cursor: not-allowed; }
     
-    #pesanStatus { margin-top: 15px; font-weight: bold; text-align: center; }
+    #status { margin-top: 15px; font-weight: bold; text-align: center; }
   </style>
 </head>
 <body>
 
-  <h2>Form Presensi Karyawan</h2>
+  <h2>Absensi Karyawan CV. Maxbrand</h2>
 
   <!-- 1. Pilih Nama Karyawan -->
   <div class="form-group">
     <label for="nama">Nama Karyawan:</label>
-    <select id="nama" required>
+    <select id="nama" onclick="cekUlangNama()">
       <option value="">Memuat nama karyawan...</option>
     </select>
   </div>
 
-  <!-- 2. Kamera & Foto -->
+  <!-- 2. Area Kamera & Foto -->
   <div class="form-group">
-    <label>Foto Presensi:</label>
+    <label>Foto Selfie:</label>
     <div class="camera-box">
-      <video id="webcam" autoplay playsinline></video>
-      <canvas id="canvas" style="display: none;"></canvas>
+      <!-- Video Live (Class "mirror" dipasang default) -->
+      <video id="video" class="mirror" autoplay playsinline></video>
+      <!-- Preview Hasil Foto -->
       <img id="previewFoto" src="" style="display: none;" />
+      <canvas id="canvas" style="display:none;"></canvas>
     </div>
 
+    <!-- Tombol Mirror & Snapshot -->
+    <button type="button" id="btnToggleMirror" class="btn-mirror" onclick="toggleMirror()">🔄 Balikkan Kamera (Toggle Mirror)</button>
+    
     <div class="btn-group-foto">
       <button type="button" id="btnAmbilFoto" onclick="ambilFoto()" class="btn-foto">📸 Ambil Foto</button>
       <button type="button" id="btnFotoUlang" onclick="ulangFoto()" class="btn-ulang">🔄 Foto Ulang</button>
     </div>
   </div>
 
-  <!-- Hidden Input untuk menyimpan Base64 Foto -->
+  <!-- Input Hidden untuk Menyimpan Data Base64 Foto -->
   <input type="hidden" id="fotoBase64" />
 
-  <!-- 3. Tombol Status (Masuk / Pulang) -->
+  <!-- 3. Tombol Status Absen (Masuk / Pulang) -->
   <div class="form-group btn-group-absen">
     <button type="button" id="btnMasuk" onclick="kirimAbsen('Masuk')" class="btn-masuk">📥 MASUK</button>
     <button type="button" id="btnPulang" onclick="kirimAbsen('Pulang')" class="btn-pulang">📤 PULANG</button>
   </div>
 
-  <div id="pesanStatus"></div>
+  <div id="status"></div>
 
   <script>
-    // GANTI DENGAN URL WEB APP GOOGLE APPS SCRIPT KAMU
-    const API_URL = "https://script.google.com/macros/s/AKfycbwwKTsVVu39HdMNgGgMDDkRyLO-egl3xXZgVjuq9-34gfgF2qNUmx4mcfKvvx67Jfci/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbwwKTsVVu39HdMNgGgMDDkRyLO-egl3xXZgVjuq9-34gfgF2qNUmx4mcfKvvx67Jfci/exec"; 
 
-    let videoStream = null;
+    let isMirrored = true;
+    let namaLoaded = false;
 
-    // A. Muat Nama Karyawan dari Google Sheet
+    // --- 1. Ambil Nama Karyawan ---
     async function loadNama() {
       const select = document.getElementById("nama");
+      select.innerHTML = '<option value="">Memuat nama karyawan...</option>';
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
       try {
-        const res = await fetch(API_URL + "?t=" + new Date().getTime());
+        const urlFetch = API_URL + "?t=" + new Date().getTime();
+        
+        const res = await fetch(urlFetch, {
+          method: "GET",
+          redirect: "follow",
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+          throw new Error("HTTP Status " + res.status);
+        }
+
         const daftarNama = await res.json();
         
         if (Array.isArray(daftarNama) && daftarNama.length > 0) {
           select.innerHTML = '<option value="">-- Pilih Nama --</option>';
           daftarNama.forEach(nama => {
-            select.innerHTML += `<option value="${nama}">${nama}</option>`;
+            const opt = document.createElement("option");
+            opt.value = nama;
+            opt.textContent = nama;
+            select.appendChild(opt);
           });
+          namaLoaded = true;
         } else {
           select.innerHTML = '<option value="">Daftar nama kosong</option>';
         }
       } catch (err) {
         console.error("Error load nama:", err);
-        select.innerHTML = '<option value="">Gagal memuat nama (Gagal koneksi)</option>';
+        if (err.name === 'AbortError') {
+          select.innerHTML = '<option value="">Koneksi lambat (Sinyal/Server Timeout)</option>';
+        } else {
+          select.innerHTML = '<option value="">Gagal memuat nama (Klik untuk coba lagi)</option>';
+        }
+        namaLoaded = false;
       }
     }
 
-    // B. Inisialisasi Kamera Depan
-    async function initKamera() {
-      const video = document.getElementById('webcam');
-      try {
-        videoStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "user" },
-          audio: false
-        });
-        video.srcObject = videoStream;
-      } catch (err) {
-        console.error("Gagal kamera:", err);
-        alert("Tidak dapat mengakses kamera. Pastikan izin kamera sudah diberikan di browser HP.");
+    function cekUlangNama() {
+      if (!namaLoaded) {
+        loadNama();
       }
     }
 
-    // C. Ambil Foto
-    function ambilFoto() {
-      const video = document.getElementById('webcam');
-      const canvas = document.getElementById('canvas');
-      const preview = document.getElementById('previewFoto');
-      const inputFoto = document.getElementById('fotoBase64');
-      
-      const btnAmbil = document.getElementById('btnAmbilFoto');
-      const btnUlang = document.getElementById('btnFotoUlang');
-
-      if (!video.srcObject) {
-        alert("Kamera belum siap!");
+    // --- 2. Inisialisasi Kamera Selfie ---
+    function initKamera() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("Browser Anda tidak mendukung akses kamera.");
         return;
       }
 
-      canvas.width = video.videoWidth || 400;
-      canvas.height = video.videoHeight || 300;
+      navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+        .then(stream => { 
+          const video = document.getElementById("video");
+          video.srcObject = stream; 
+        })
+        .catch(err => {
+          console.error("Gagal kamera:", err);
+          alert("Gagal mengakses kamera: " + err.message);
+        });
+    }
 
-      const context = canvas.getContext('2d');
-      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+    // --- 3. Toggle Mirror ---
+    function toggleMirror() {
+      const video = document.getElementById("video");
+      isMirrored = !isMirrored;
+      if (isMirrored) {
+        video.classList.add("mirror");
+      } else {
+        video.classList.remove("mirror");
+      }
+    }
 
-      const dataBase64 = canvas.toDataURL('image/jpeg', 0.8);
+    // --- 4. Ambil Foto (Snapshot Canvas) ---
+    function ambilFoto() {
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      const previewFoto = document.getElementById("previewFoto");
+      const inputFoto = document.getElementById("fotoBase64");
+      
+      const btnAmbil = document.getElementById("btnAmbilFoto");
+      const btnUlang = document.getElementById("btnFotoUlang");
+      const btnToggleMirror = document.getElementById("btnToggleMirror");
+
+      if (!video.srcObject) {
+        alert("Kamera belum siap/aktif!");
+        return;
+      }
+
+      const ctx = canvas.getContext("2d");
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 480;
+      canvas.width = width;
+      canvas.height = height;
+
+      if (isMirrored) {
+        ctx.translate(width, 0);
+        ctx.scale(-1, 1);
+      }
+
+      ctx.drawImage(video, 0, 0, width, height);
+      const dataBase64 = canvas.toDataURL("image/jpeg", 0.8);
+
       inputFoto.value = dataBase64;
+      previewFoto.src = dataBase64;
 
-      preview.src = dataBase64;
-      preview.style.display = "block";
       video.style.display = "none";
+      previewFoto.style.display = "block";
 
       btnAmbil.style.display = "none";
       btnUlang.style.display = "block";
+      btnToggleMirror.style.display = "none";
     }
 
-    // D. Ulang Foto
+    // --- 5. Foto Ulang ---
     function ulangFoto() {
-      const video = document.getElementById('webcam');
-      const preview = document.getElementById('previewFoto');
-      const inputFoto = document.getElementById('fotoBase64');
+      const video = document.getElementById("video");
+      const previewFoto = document.getElementById("previewFoto");
+      const inputFoto = document.getElementById("fotoBase64");
       
-      const btnAmbil = document.getElementById('btnAmbilFoto');
-      const btnUlang = document.getElementById('btnFotoUlang');
+      const btnAmbil = document.getElementById("btnAmbilFoto");
+      const btnUlang = document.getElementById("btnFotoUlang");
+      const btnToggleMirror = document.getElementById("btnToggleMirror");
 
       inputFoto.value = "";
-      preview.style.display = "none";
+      previewFoto.style.display = "none";
       video.style.display = "block";
 
       btnAmbil.style.display = "block";
       btnUlang.style.display = "none";
+      btnToggleMirror.style.display = "block";
     }
 
-    // E. Kirim Absen (Masuk / Pulang)
+    // Helper untuk mengambil posisi Geolocation dengan opsi fallback
+    function getPositionOptions(highAccuracy = true) {
+      return {
+        enableHighAccuracy: highAccuracy,
+        timeout: highAccuracy ? 10000 : 15000,
+        maximumAge: 0
+      };
+    }
+
+    // --- 6. Proses Kirim Absensi (Masuk / Pulang) ---
     async function kirimAbsen(statusType) {
       const nama = document.getElementById("nama").value;
-      const foto = document.getElementById("fotoBase64").value;
-      const pesanStatus = document.getElementById("pesanStatus");
+      const fotoBase64 = document.getElementById("fotoBase64").value;
+      const statusDiv = document.getElementById("status");
 
-      if (!nama) {
-        alert("Silakan pilih Nama Karyawan terlebih dahulu.");
-        return;
+      if (!nama) return alert("Pilih nama Anda terlebih dahulu!");
+      if (!fotoBase64) return alert("Silakan ambil foto terlebih dahulu sebelum menekan tombol " + statusType + "!");
+
+      if (!navigator.geolocation) {
+        return alert("Browser Anda tidak mendukung fitur lokasi GPS.");
       }
 
-      if (!foto) {
-        alert("Silakan ambil foto terlebih dahulu sebelum menekan tombol " + statusType + ".");
-        return;
-      }
-
-      // Nonaktifkan tombol saat pengiriman
       setLoading(true);
-      pesanStatus.style.color = "blue";
-      pesanStatus.innerText = "Mendapatkan lokasi GPS & mengirim data...";
+      statusDiv.style.color = "blue";
+      statusDiv.innerHTML = "Mendapatkan lokasi GPS & mengirim data...";
 
-      // Ambil GPS Lokasi HP
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const lat = position.coords.latitude;
-          const long = position.coords.longitude;
+      const handleSuccess = async (pos) => {
+        const userLat = pos.coords.latitude;
+        const userLong = pos.coords.longitude;
 
-          const payload = {
-            nama: nama,
-            status: statusType,
-            lat: lat,
-            long: long,
-            foto: foto
-          };
+        const payloadParams = new URLSearchParams();
+        payloadParams.append("nama", nama);
+        payloadParams.append("status", statusType);
+        payloadParams.append("lat", userLat);
+        payloadParams.append("long", userLong);
+        payloadParams.append("foto", fotoBase64);
 
-          try {
-            const response = await fetch(API_URL, {
-              method: "POST",
-              body: JSON.stringify(payload)
-            });
-
-            const result = await response.json();
-
+        try {
+          const response = await fetch(API_URL, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: payloadParams.toString()
+          });
+          
+          const result = await response.json();
+          
+          if (result && result.message) {
+            statusDiv.style.color = result.status === "success" ? "green" : "red";
+            statusDiv.innerHTML = result.message;
             if (result.status === "success") {
-              pesanStatus.style.color = "green";
-              pesanStatus.innerText = result.message;
-              ulangFoto(); // Reset foto setelah berhasil
-            } else {
-              pesanStatus.style.color = "red";
-              pesanStatus.innerText = "Gagal: " + result.message;
+              ulangFoto();
             }
-          } catch (err) {
-            console.error("Error submit:", err);
-            pesanStatus.style.color = "red";
-            pesanStatus.innerText = "Terjadi kesalahan koneksi saat mengirim data.";
-          } finally {
-            setLoading(false);
+          } else {
+            statusDiv.style.color = "orange";
+            statusDiv.innerHTML = "Absen terkirim (tanpa respon pesan).";
           }
-        },
-        (error) => {
+        } catch (err) {
+          console.error("Error kirim absen:", err);
+          statusDiv.style.color = "red";
+          statusDiv.innerHTML = "Terjadi kesalahan koneksi/server saat mengirim absen.";
+        } finally {
           setLoading(false);
-          pesanStatus.style.color = "red";
-          pesanStatus.innerText = "Gagal mendapatkan lokasi GPS. Pastikan GPS HP diaktifkan.";
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
+        }
+      };
+
+      const handleError = (err) => {
+        // Jika timeout saat meminta high accuracy, coba sekali lagi dengan standar accuracy
+        if (err.code === err.TIMEOUT) {
+          statusDiv.innerHTML = "Mencoba ulang mendapatkan lokasi GPS...";
+          navigator.geolocation.getCurrentPosition(
+            handleSuccess,
+            (fallbackErr) => {
+              setLoading(false);
+              statusDiv.style.color = "red";
+              statusDiv.innerHTML = "Gagal mengambil lokasi GPS (Timeout). Pastikan lokasi/GPS di HP aktif.";
+            },
+            getPositionOptions(false)
+          );
+        } else {
+          setLoading(false);
+          statusDiv.style.color = "red";
+          statusDiv.innerHTML = "Gagal mengambil lokasi GPS. Pastikan izin GPS telah diberikan.";
+        }
+      };
+
+      navigator.geolocation.getCurrentPosition(handleSuccess, handleError, getPositionOptions(true));
     }
 
     function setLoading(isLoading) {
@@ -230,8 +335,8 @@
       document.getElementById("btnPulang").disabled = isLoading;
     }
 
-    // Jalankan saat pertama kali dimuat
-    window.addEventListener('DOMContentLoaded', () => {
+    // Jalankan setelah DOM siap
+    document.addEventListener("DOMContentLoaded", function() {
       loadNama();
       initKamera();
     });
