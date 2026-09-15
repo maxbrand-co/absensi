@@ -180,7 +180,7 @@
       }
     }
 
-    // --- 4. Ambil Foto (Snapshot Canvas) ---
+    // --- 4. Ambil Foto (Snapshot Canvas dengan Fitur Mirroring) ---
     function ambilFoto() {
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
@@ -202,6 +202,7 @@
       canvas.width = width;
       canvas.height = height;
 
+      // Jika mode mirror aktif, flip canvas secara horizontal sebelum menggambar
       if (isMirrored) {
         ctx.translate(width, 0);
         ctx.scale(-1, 1);
@@ -240,7 +241,6 @@
       btnToggleMirror.style.display = "block";
     }
 
-    // Helper untuk mengambil posisi Geolocation dengan opsi fallback
     function getPositionOptions(highAccuracy = true) {
       return {
         enableHighAccuracy: highAccuracy,
@@ -249,7 +249,7 @@
       };
     }
 
-    // --- 6. Proses Kirim Absensi (Masuk / Pulang) ---
+    // --- 6. Proses Kirim Absensi ---
     async function kirimAbsen(statusType) {
       const nama = document.getElementById("nama").value;
       const fotoBase64 = document.getElementById("fotoBase64").value;
@@ -308,7 +308,6 @@
       };
 
       const handleError = (err) => {
-        // Jika timeout saat meminta high accuracy, coba sekali lagi dengan standar accuracy
         if (err.code === err.TIMEOUT) {
           statusDiv.innerHTML = "Mencoba ulang mendapatkan lokasi GPS...";
           navigator.geolocation.getCurrentPosition(
@@ -335,7 +334,6 @@
       document.getElementById("btnPulang").disabled = isLoading;
     }
 
-    // Jalankan setelah DOM siap
     document.addEventListener("DOMContentLoaded", function() {
       loadNama();
       initKamera();
