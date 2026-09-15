@@ -62,16 +62,29 @@
     let userLong = null;
     let isMirrored = true; // Status default mirror aktif
 
-    // 1. Ambil Nama Karyawan dari API Apps Script (Anti-Cache & Follow Redirect)
+    // 1. Ambil Nama Karyawan (Dioptimasi dengan Timeout & Fallback)
     async function loadNama() {
       const select = document.getElementById("nama");
+      select.innerHTML = '<option value="">Memuat nama karyawan...</option>';
+
+      // Buat controller timeout 8 detik agar tidak muter terus tanpa kepastian
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
       try {
         const urlFetch = API_URL + "?t=" + new Date().getTime();
         
         const res = await fetch(urlFetch, {
           method: "GET",
-          redirect: "follow"
+          redirect: "follow",
+          signal: controller.signal
         });
+
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+          throw new Error("HTTP Status " + res.status);
+        }
 
         const daftarNama = await res.json();
         
@@ -85,7 +98,11 @@
         }
       } catch (err) {
         console.error("Error load nama:", err);
-        select.innerHTML = '<option value="">Gagal memuat nama (Cek Koneksi)</option>';
+        if (err.name === 'AbortError') {
+          select.innerHTML = '<option value="">Koneksi lambat (Sinyal/Server Timeout)</option>';
+        } else {
+          select.innerHTML = '<option value="">Gagal memuat nama (Klik untuk coba lagi)</option>';
+        }
       }
     }
 
