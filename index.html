@@ -7,9 +7,24 @@
   <style>
     body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; }
     video, canvas { width: 100%; border-radius: 8px; background: #222; }
+    
+    /* CSS Efek Mirror pada Video Preview */
+    .mirror {
+      transform: scaleX(-1);
+      -webkit-transform: scaleX(-1);
+    }
+
     select, button { width: 100%; padding: 12px; margin-top: 10px; font-size: 16px; border-radius: 6px; }
     button { background: #28a745; color: white; border: none; font-weight: bold; cursor: pointer; }
     button:disabled { background: #ccc; }
+    
+    .btn-mirror {
+      background: #6c757d;
+      margin-top: 5px;
+      padding: 8px;
+      font-size: 14px;
+    }
+    
     #status { margin-top: 15px; font-weight: bold; text-align: center; }
   </style>
 </head>
@@ -29,31 +44,33 @@
   </select>
 
   <p>Kamera Selfie:</p>
-  <video id="video" autoplay playsinline></video>
+  <!-- Class "mirror" dipasang secara default -->
+  <video id="video" class="mirror" autoplay playsinline></video>
+  
+  <!-- Tombol Toggle Mirror -->
+  <button type="button" class="btn-mirror" onclick="toggleMirror()">🔄 Balikkan Kamera (Toggle Mirror)</button>
+  
   <canvas id="canvas" style="display:none;"></canvas>
 
   <button id="btnAbsen" onclick="kirimAbsen()">KIRIM ABSENSI</button>
   <div id="status"></div>
 
   <script>
-    // -------------------------------------------------------------
-    // TEMPELKAN URL WEB APP GOOGLE APPS SCRIPT KAMU DI BAWAH INI:
-    // -------------------------------------------------------------
     const API_URL = "https://script.google.com/macros/s/AKfycbxbOyZCQDyxYlBOtZKl4Ah6GpEGqr-FGBTjlVgKwOe6yhFf5xOHKmGT8kcPKJnvfbaj/exec"; 
 
     let userLat = null;
     let userLong = null;
+    let isMirrored = true; // Status default mirror aktif
 
-    // 1. Ambil Nama Karyawan dari API Apps Script (Dengan Anti-Cache & Follow Redirect)
+    // 1. Ambil Nama Karyawan dari API Apps Script (Anti-Cache & Follow Redirect)
     async function loadNama() {
       const select = document.getElementById("nama");
       try {
-        // Tambahkan timestamp (?t=...) agar browser HP tidak pakai cache lama
         const urlFetch = API_URL + "?t=" + new Date().getTime();
         
         const res = await fetch(urlFetch, {
           method: "GET",
-          redirect: "follow" // Wajib ada untuk merespons pengalihan server Google
+          redirect: "follow"
         });
 
         const daftarNama = await res.json();
@@ -71,10 +88,22 @@
         select.innerHTML = '<option value="">Gagal memuat nama (Cek Koneksi)</option>';
       }
     }
-    // 2. Akses Kamera (Sekarang Aman karena di domain luar)
+
+    // 2. Akses Kamera Selfie
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
       .then(stream => { document.getElementById("video").srcObject = stream; })
       .catch(err => alert("Gagal mengakses kamera: " + err));
+
+    // Fungsi Toggle Mirror untuk beralih mode mirror
+    function toggleMirror() {
+      const video = document.getElementById("video");
+      isMirrored = !isMirrored;
+      if (isMirrored) {
+        video.classList.add("mirror");
+      } else {
+        video.classList.remove("mirror");
+      }
+    }
 
     // 3. Akses GPS
     if (navigator.geolocation) {
@@ -87,7 +116,7 @@
       );
     }
 
-    // 4. Proses Kirim Data Absen
+    // 4. Proses Kirim Data Absen (Termasuk Penanganan Mirror pada Hasil Foto)
     async function kirimAbsen() {
       const nama = document.getElementById("nama").value;
       const statusAbsen = document.getElementById("statusAbsen").value;
@@ -97,35 +126,53 @@
       if (!nama) return alert("Pilih nama Anda terlebih dahulu!");
       if (!userLat || !userLong) return alert("Lokasi GPS belum terdeteksi. Tunggu beberapa detik.");
 
-      // Ambil foto dari Video ke Canvas (Base64)
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-      canvas.getContext("2d").drawImage(video, 0, 0);
+      const ctx = canvas.getContext("2d");
+
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 480;
+      canvas.width = width;
+      canvas.height = height;
+
+      // Jika mode mirror aktif, balikkan koordinat canvas sebelum menggambar
+      if (isMirrored) {
+        ctx.translate(width, 0);
+        ctx.scale(-1, 1);
+      }
+
+      ctx.drawImage(video, 0, 0, width, height);
       const fotoBase64 = canvas.toDataURL("image/jpeg");
 
       btn.disabled = true;
       statusDiv.innerHTML = "Mengirim data absensi...";
 
-      const payload = {
-        nama: nama,
-        status: statusAbsen,
-        lat: userLat,
-        long: userLong,
-        foto: fotoBase64
-      };
+      const payloadParams = new URLSearchParams();
+      payloadParams.append("nama", nama);
+      payloadParams.append("status", statusAbsen);
+      payloadParams.append("lat", userLat);
+      payloadParams.append("long", userLong);
+      payloadParams.append("foto", fotoBase64);
 
       try {
         const response = await fetch(API_URL, {
           method: "POST",
-          body: JSON.stringify(payload)
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          body: payloadParams.toString()
         });
         
         const result = await response.json();
-        statusDiv.innerHTML = result.message;
+        
+        if (result && result.message) {
+          statusDiv.innerHTML = result.message;
+        } else {
+          statusDiv.innerHTML = "Absen terkirim (tanpa respon pesan).";
+        }
       } catch (err) {
-        statusDiv.innerHTML = "Terjadi kesalahan koneksi/server.";
+        console.error("Error kirim absen:", err);
+        statusDiv.innerHTML = "Terjadi kesalahan koneksi/server saat mengirim absen.";
       } finally {
         btn.disabled = false;
       }
