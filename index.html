@@ -3,89 +3,80 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aplikasi Absensi CV. Maxbrand</title>
+  <title>Presensi Karyawan</title>
   <style>
-    body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; }
-    video, canvas { width: 100%; border-radius: 8px; background: #222; }
+    body { font-family: Arial, sans-serif; max-width: 500px; margin: 20px auto; padding: 15px; }
+    .form-group { margin-bottom: 15px; }
+    label { display: block; font-weight: bold; margin-bottom: 5px; }
+    select, button { width: 100%; padding: 12px; font-size: 16px; border-radius: 6px; border: 1px solid #ccc; box-sizing: border-box; }
     
-    /* CSS Efek Mirror pada Video Preview */
-    .mirror {
-      transform: scaleX(-1);
-      -webkit-transform: scaleX(-1);
-    }
-
-    select, button { width: 100%; padding: 12px; margin-top: 10px; font-size: 16px; border-radius: 6px; }
-    button { background: #28a745; color: white; border: none; font-weight: bold; cursor: pointer; }
-    button:disabled { background: #ccc; }
+    /* Layout Kamera */
+    .camera-box { position: relative; width: 100%; margin: 10px 0; text-align: center; }
+    video, img { width: 100%; max-height: 300px; object-fit: cover; border-radius: 8px; border: 1px solid #ccc; }
     
-    .btn-mirror {
-      background: #6c757d;
-      margin-top: 5px;
-      padding: 8px;
-      font-size: 14px;
-    }
+    /* Tombol Aksi */
+    .btn-group-foto { display: flex; gap: 10px; margin-top: 8px; }
+    .btn-group-absen { display: flex; gap: 10px; margin-top: 20px; }
     
-    #status { margin-top: 15px; font-weight: bold; text-align: center; }
+    .btn-foto { background-color: #007bff; color: white; font-weight: bold; border: none; cursor: pointer; }
+    .btn-ulang { background-color: #6c757d; color: white; border: none; cursor: pointer; display: none; }
+    
+    .btn-masuk { background-color: #28a745; color: white; font-weight: bold; border: none; cursor: pointer; }
+    .btn-pulang { background-color: #dc3545; color: white; font-weight: bold; border: none; cursor: pointer; }
+    button:disabled { background-color: #cccccc !important; cursor: not-allowed; }
+    
+    #pesanStatus { margin-top: 15px; font-weight: bold; text-align: center; }
   </style>
 </head>
 <body>
 
-  <h2>Absensi Karyawan CV. Maxbrand</h2>
+  <h2>Form Presensi Karyawan</h2>
 
-  <label for="nama">Nama Karyawan:</label>
-  <select id="nama">
-    <option value="">Memuat nama karyawan...</option>
-  </select>
+  <!-- 1. Pilih Nama Karyawan -->
+  <div class="form-group">
+    <label for="nama">Nama Karyawan:</label>
+    <select id="nama" required>
+      <option value="">Memuat nama karyawan...</option>
+    </select>
+  </div>
 
-  <label for="statusAbsen" style="margin-top:15px; display:block;">Status:</label>
-  <select id="statusAbsen">
-    <option value="Masuk">Masuk</option>
-    <option value="Pulang">Pulang</option>
-  </select>
+  <!-- 2. Kamera & Foto -->
+  <div class="form-group">
+    <label>Foto Presensi:</label>
+    <div class="camera-box">
+      <video id="webcam" autoplay playsinline></video>
+      <canvas id="canvas" style="display: none;"></canvas>
+      <img id="previewFoto" src="" style="display: none;" />
+    </div>
 
-  <p>Kamera Selfie:</p>
-  <!-- Class "mirror" dipasang secara default -->
-  <video id="video" class="mirror" autoplay playsinline></video>
-  
-  <!-- Tombol Toggle Mirror -->
-  <button type="button" class="btn-mirror" onclick="toggleMirror()">🔄 Balikkan Kamera (Toggle Mirror)</button>
-  
-  <canvas id="canvas" style="display:none;"></canvas>
+    <div class="btn-group-foto">
+      <button type="button" id="btnAmbilFoto" onclick="ambilFoto()" class="btn-foto">📸 Ambil Foto</button>
+      <button type="button" id="btnFotoUlang" onclick="ulangFoto()" class="btn-ulang">🔄 Foto Ulang</button>
+    </div>
+  </div>
 
-  <button id="btnAbsen" onclick="kirimAbsen()">KIRIM ABSENSI</button>
-  <div id="status"></div>
+  <!-- Hidden Input untuk menyimpan Base64 Foto -->
+  <input type="hidden" id="fotoBase64" />
+
+  <!-- 3. Tombol Status (Masuk / Pulang) -->
+  <div class="form-group btn-group-absen">
+    <button type="button" id="btnMasuk" onclick="kirimAbsen('Masuk')" class="btn-masuk">📥 MASUK</button>
+    <button type="button" id="btnPulang" onclick="kirimAbsen('Pulang')" class="btn-pulang">📤 PULANG</button>
+  </div>
+
+  <div id="pesanStatus"></div>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbwwKTsVVu39HdMNgGgMDDkRyLO-egl3xXZgVjuq9-34gfgF2qNUmx4mcfKvvx67Jfci/exec"; 
+    // GANTI DENGAN URL WEB APP GOOGLE APPS SCRIPT KAMU
+    const API_URL = "https://script.google.com/macros/s/AKfycbx.../exec";
 
-    let userLat = null;
-    let userLong = null;
-    let isMirrored = true; // Status default mirror aktif
+    let videoStream = null;
 
-    // 1. Ambil Nama Karyawan (Dioptimasi dengan Timeout & Fallback)
+    // A. Muat Nama Karyawan dari Google Sheet
     async function loadNama() {
       const select = document.getElementById("nama");
-      select.innerHTML = '<option value="">Memuat nama karyawan...</option>';
-
-      // Buat controller timeout 8 detik agar tidak muter terus tanpa kepastian
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-
       try {
-        const urlFetch = API_URL + "?t=" + new Date().getTime();
-        
-        const res = await fetch(urlFetch, {
-          method: "GET",
-          redirect: "follow",
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!res.ok) {
-          throw new Error("HTTP Status " + res.status);
-        }
-
+        const res = await fetch(API_URL + "?t=" + new Date().getTime());
         const daftarNama = await res.json();
         
         if (Array.isArray(daftarNama) && daftarNama.length > 0) {
@@ -98,104 +89,152 @@
         }
       } catch (err) {
         console.error("Error load nama:", err);
-        if (err.name === 'AbortError') {
-          select.innerHTML = '<option value="">Koneksi lambat (Sinyal/Server Timeout)</option>';
-        } else {
-          select.innerHTML = '<option value="">Gagal memuat nama (Klik untuk coba lagi)</option>';
-        }
+        select.innerHTML = '<option value="">Gagal memuat nama (Gagal koneksi)</option>';
       }
     }
 
-    // 2. Akses Kamera Selfie
-    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-      .then(stream => { document.getElementById("video").srcObject = stream; })
-      .catch(err => alert("Gagal mengakses kamera: " + err));
-
-    // Fungsi Toggle Mirror untuk beralih mode mirror
-    function toggleMirror() {
-      const video = document.getElementById("video");
-      isMirrored = !isMirrored;
-      if (isMirrored) {
-        video.classList.add("mirror");
-      } else {
-        video.classList.remove("mirror");
+    // B. Inisialisasi Kamera Depan
+    async function initKamera() {
+      const video = document.getElementById('webcam');
+      try {
+        videoStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "user" },
+          audio: false
+        });
+        video.srcObject = videoStream;
+      } catch (err) {
+        console.error("Gagal kamera:", err);
+        alert("Tidak dapat mengakses kamera. Pastikan izin kamera sudah diberikan di browser HP.");
       }
     }
 
-    // 3. Akses GPS
-    if (navigator.geolocation) {
+    // C. Ambil Foto
+    function ambilFoto() {
+      const video = document.getElementById('webcam');
+      const canvas = document.getElementById('canvas');
+      const preview = document.getElementById('previewFoto');
+      const inputFoto = document.getElementById('fotoBase64');
+      
+      const btnAmbil = document.getElementById('btnAmbilFoto');
+      const btnUlang = document.getElementById('btnFotoUlang');
+
+      if (!video.srcObject) {
+        alert("Kamera belum siap!");
+        return;
+      }
+
+      canvas.width = video.videoWidth || 400;
+      canvas.height = video.videoHeight || 300;
+
+      const context = canvas.getContext('2d');
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const dataBase64 = canvas.toDataURL('image/jpeg', 0.8);
+      inputFoto.value = dataBase64;
+
+      preview.src = dataBase64;
+      preview.style.display = "block";
+      video.style.display = "none";
+
+      btnAmbil.style.display = "none";
+      btnUlang.style.display = "block";
+    }
+
+    // D. Ulang Foto
+    function ulangFoto() {
+      const video = document.getElementById('webcam');
+      const preview = document.getElementById('previewFoto');
+      const inputFoto = document.getElementById('fotoBase64');
+      
+      const btnAmbil = document.getElementById('btnAmbilFoto');
+      const btnUlang = document.getElementById('btnFotoUlang');
+
+      inputFoto.value = "";
+      preview.style.display = "none";
+      video.style.display = "block";
+
+      btnAmbil.style.display = "block";
+      btnUlang.style.display = "none";
+    }
+
+    // E. Kirim Absen (Masuk / Pulang)
+    async function kirimAbsen(statusType) {
+      const nama = document.getElementById("nama").value;
+      const foto = document.getElementById("fotoBase64").value;
+      const pesanStatus = document.getElementById("pesanStatus");
+
+      if (!nama) {
+        alert("Silakan pilih Nama Karyawan terlebih dahulu.");
+        return;
+      }
+
+      if (!foto) {
+        alert("Silakan ambil foto terlebih dahulu sebelum menekan tombol " + statusType + ".");
+        return;
+      }
+
+      // Nonaktifkan tombol saat pengiriman
+      setLoading(true);
+      pesanStatus.style.color = "blue";
+      pesanStatus.innerText = "Mendapatkan lokasi GPS & mengirim data...";
+
+      // Ambil GPS Lokasi HP
       navigator.geolocation.getCurrentPosition(
-        pos => {
-          userLat = pos.coords.latitude;
-          userLong = pos.coords.longitude;
+        async (position) => {
+          const lat = position.coords.latitude;
+          const long = position.coords.longitude;
+
+          const payload = {
+            nama: nama,
+            status: statusType,
+            lat: lat,
+            long: long,
+            foto: foto
+          };
+
+          try {
+            const response = await fetch(API_URL, {
+              method: "POST",
+              body: JSON.stringify(payload)
+            });
+
+            const result = await response.json();
+
+            if (result.status === "success") {
+              pesanStatus.style.color = "green";
+              pesanStatus.innerText = result.message;
+              ulangFoto(); // Reset foto setelah berhasil
+            } else {
+              pesanStatus.style.color = "red";
+              pesanStatus.innerText = "Gagal: " + result.message;
+            }
+          } catch (err) {
+            console.error("Error submit:", err);
+            pesanStatus.style.color = "red";
+            pesanStatus.innerText = "Terjadi kesalahan koneksi saat mengirim data.";
+          } finally {
+            setLoading(false);
+          }
         },
-        err => alert("Gagal mengambil lokasi GPS. Pastikan GPS aktif!")
+        (error) => {
+          setLoading(false);
+          pesanStatus.style.color = "red";
+          pesanStatus.innerText = "Gagal mendapatkan lokasi GPS. Pastikan GPS HP diaktifkan.";
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
       );
     }
 
-    // 4. Proses Kirim Data Absen (Termasuk Penanganan Mirror pada Hasil Foto)
-    async function kirimAbsen() {
-      const nama = document.getElementById("nama").value;
-      const statusAbsen = document.getElementById("statusAbsen").value;
-      const btn = document.getElementById("btnAbsen");
-      const statusDiv = document.getElementById("status");
-
-      if (!nama) return alert("Pilih nama Anda terlebih dahulu!");
-      if (!userLat || !userLong) return alert("Lokasi GPS belum terdeteksi. Tunggu beberapa detik.");
-
-      const video = document.getElementById("video");
-      const canvas = document.getElementById("canvas");
-      const ctx = canvas.getContext("2d");
-
-      const width = video.videoWidth || 640;
-      const height = video.videoHeight || 480;
-      canvas.width = width;
-      canvas.height = height;
-
-      // Jika mode mirror aktif, balikkan koordinat canvas sebelum menggambar
-      if (isMirrored) {
-        ctx.translate(width, 0);
-        ctx.scale(-1, 1);
-      }
-
-      ctx.drawImage(video, 0, 0, width, height);
-      const fotoBase64 = canvas.toDataURL("image/jpeg");
-
-      btn.disabled = true;
-      statusDiv.innerHTML = "Mengirim data absensi...";
-
-      const payloadParams = new URLSearchParams();
-      payloadParams.append("nama", nama);
-      payloadParams.append("status", statusAbsen);
-      payloadParams.append("lat", userLat);
-      payloadParams.append("long", userLong);
-      payloadParams.append("foto", fotoBase64);
-
-      try {
-        const response = await fetch(API_URL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded"
-          },
-          body: payloadParams.toString()
-        });
-        
-        const result = await response.json();
-        
-        if (result && result.message) {
-          statusDiv.innerHTML = result.message;
-        } else {
-          statusDiv.innerHTML = "Absen terkirim (tanpa respon pesan).";
-        }
-      } catch (err) {
-        console.error("Error kirim absen:", err);
-        statusDiv.innerHTML = "Terjadi kesalahan koneksi/server saat mengirim absen.";
-      } finally {
-        btn.disabled = false;
-      }
+    function setLoading(isLoading) {
+      document.getElementById("btnMasuk").disabled = isLoading;
+      document.getElementById("btnPulang").disabled = isLoading;
     }
 
-    window.onload = loadNama;
+    // Jalankan saat pertama kali dimuat
+    window.addEventListener('DOMContentLoaded', () => {
+      loadNama();
+      initKamera();
+    });
   </script>
 </body>
 </html>
