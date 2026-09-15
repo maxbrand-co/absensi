@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Aplikasi Absensi</title>
+  <title>Aplikasi Absensi CV. Maxbrand</title>
   <style>
     body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; }
     video, canvas { width: 100%; border-radius: 8px; background: #222; }
@@ -15,7 +15,7 @@
 </head>
 <body>
 
-  <h2>Absensi Karyawan</h2>
+  <h2>Absensi Karyawan CV. Maxbrand</h2>
 
   <label for="nama">Nama Karyawan:</label>
   <select id="nama">
@@ -44,21 +44,33 @@
     let userLat = null;
     let userLong = null;
 
-    // 1. Ambil Nama Karyawan dari API Apps Script
+    // 1. Ambil Nama Karyawan dari API Apps Script (Dengan Anti-Cache & Follow Redirect)
     async function loadNama() {
+      const select = document.getElementById("nama");
       try {
-        const res = await fetch(API_URL);
-        const daftarNama = await res.json();
-        const select = document.getElementById("nama");
-        select.innerHTML = '<option value="">-- Pilih Nama --</option>';
-        daftarNama.forEach(nama => {
-          select.innerHTML += `<option value="${nama}">${nama}</option>`;
+        // Tambahkan timestamp (?t=...) agar browser HP tidak pakai cache lama
+        const urlFetch = API_URL + "?t=" + new Date().getTime();
+        
+        const res = await fetch(urlFetch, {
+          method: "GET",
+          redirect: "follow" // Wajib ada untuk merespons pengalihan server Google
         });
+
+        const daftarNama = await res.json();
+        
+        if (Array.isArray(daftarNama) && daftarNama.length > 0) {
+          select.innerHTML = '<option value="">-- Pilih Nama --</option>';
+          daftarNama.forEach(nama => {
+            select.innerHTML += `<option value="${nama}">${nama}</option>`;
+          });
+        } else {
+          select.innerHTML = '<option value="">Daftar nama kosong</option>';
+        }
       } catch (err) {
-        document.getElementById("nama").innerHTML = '<option value="">Gagal memuat nama</option>';
+        console.error("Error load nama:", err);
+        select.innerHTML = '<option value="">Gagal memuat nama (Cek Koneksi)</option>';
       }
     }
-
     // 2. Akses Kamera (Sekarang Aman karena di domain luar)
     navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
       .then(stream => { document.getElementById("video").srcObject = stream; })
