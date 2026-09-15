@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aplikasi Absensi</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; max-width: 500px; margin: auto; }
+    video, canvas { width: 100%; border-radius: 8px; background: #222; }
+    select, button { width: 100%; padding: 12px; margin-top: 10px; font-size: 16px; border-radius: 6px; }
+    button { background: #28a745; color: white; border: none; font-weight: bold; cursor: pointer; }
+    button:disabled { background: #ccc; }
+    #status { margin-top: 15px; font-weight: bold; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <h2>Absensi Karyawan</h2>
+
+  <label for="nama">Nama Karyawan:</label>
+  <select id="nama">
+    <option value="">Memuat nama karyawan...</option>
+  </select>
+
+  <label for="statusAbsen" style="margin-top:15px; display:block;">Status:</label>
+  <select id="statusAbsen">
+    <option value="Masuk">Masuk</option>
+    <option value="Pulang">Pulang</option>
+  </select>
+
+  <p>Kamera Selfie:</p>
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+
+  <button id="btnAbsen" onclick="kirimAbsen()">KIRIM ABSENSI</button>
+  <div id="status"></div>
+
+  <script>
+    // -------------------------------------------------------------
+    // TEMPELKAN URL WEB APP GOOGLE APPS SCRIPT KAMU DI BAWAH INI:
+    // -------------------------------------------------------------
+    const API_URL = "https://script.google.com/macros/s/AKfycbx.../exec"; 
+
+    let userLat = null;
+    let userLong = null;
+
+    // 1. Ambil Nama Karyawan dari API Apps Script
+    async function loadNama() {
+      try {
+        const res = await fetch(API_URL);
+        const daftarNama = await res.json();
+        const select = document.getElementById("nama");
+        select.innerHTML = '<option value="">-- Pilih Nama --</option>';
+        daftarNama.forEach(nama => {
+          select.innerHTML += `<option value="${nama}">${nama}</option>`;
+        });
+      } catch (err) {
+        document.getElementById("nama").innerHTML = '<option value="">Gagal memuat nama</option>';
+      }
+    }
+
+    // 2. Akses Kamera (Sekarang Aman karena di domain luar)
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
+      .then(stream => { document.getElementById("video").srcObject = stream; })
+      .catch(err => alert("Gagal mengakses kamera: " + err));
+
+    // 3. Akses GPS
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        pos => {
+          userLat = pos.coords.latitude;
+          userLong = pos.coords.longitude;
+        },
+        err => alert("Gagal mengambil lokasi GPS. Pastikan GPS aktif!")
+      );
+    }
+
+    // 4. Proses Kirim Data Absen
+    async function kirimAbsen() {
+      const nama = document.getElementById("nama").value;
+      const statusAbsen = document.getElementById("statusAbsen").value;
+      const btn = document.getElementById("btnAbsen");
+      const statusDiv = document.getElementById("status");
+
+      if (!nama) return alert("Pilih nama Anda terlebih dahulu!");
+      if (!userLat || !userLong) return alert("Lokasi GPS belum terdeteksi. Tunggu beberapa detik.");
+
+      // Ambil foto dari Video ke Canvas (Base64)
+      const video = document.getElementById("video");
+      const canvas = document.getElementById("canvas");
+      canvas.width = video.videoWidth || 640;
+      canvas.height = video.videoHeight || 480;
+      canvas.getContext("2d").drawImage(video, 0, 0);
+      const fotoBase64 = canvas.toDataURL("image/jpeg");
+
+      btn.disabled = true;
+      statusDiv.innerHTML = "Mengirim data absensi...";
+
+      const payload = {
+        nama: nama,
+        status: statusAbsen,
+        lat: userLat,
+        long: userLong,
+        foto: fotoBase64
+      };
+
+      try {
+        const response = await fetch(API_URL, {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        
+        const result = await response.json();
+        statusDiv.innerHTML = result.message;
+      } catch (err) {
+        statusDiv.innerHTML = "Terjadi kesalahan koneksi/server.";
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    window.onload = loadNama;
+  </script>
+</body>
+</html>
