@@ -57,10 +57,10 @@
 
   <h2>Absensi Karyawan CV. Maxbrand</h2>
 
-  <!-- 1. Pilih Nama Karyawan -->
+  <!-- 1. Pilih Nama Karyawan (Dihapus event onclick-nya) -->
   <div class="form-group">
     <label for="nama">Nama Karyawan:</label>
-    <select id="nama" onclick="cekUlangNama()">
+    <select id="nama">
       <option value="">Memuat nama karyawan...</option>
     </select>
   </div>
@@ -69,14 +69,11 @@
   <div class="form-group">
     <label>Foto Selfie:</label>
     <div class="camera-box">
-      <!-- Video Live (Class "mirror" dipasang default) -->
       <video id="video" class="mirror" autoplay playsinline></video>
-      <!-- Preview Hasil Foto -->
       <img id="previewFoto" src="" style="display: none;" />
       <canvas id="canvas" style="display:none;"></canvas>
     </div>
 
-    <!-- Tombol Mirror & Snapshot (Posisi di bawah kotak kamera) -->
     <button type="button" id="btnToggleMirror" class="btn-mirror" onclick="toggleMirror()">🔄 Balikkan Kamera (Mirror)</button>
     
     <div class="btn-group-foto">
@@ -85,10 +82,9 @@
     </div>
   </div>
 
-  <!-- Input Hidden untuk Menyimpan Data Base64 Foto -->
   <input type="hidden" id="fotoBase64" />
 
-  <!-- 3. Tombol Status Absen (Masuk / Pulang) -->
+  <!-- 3. Tombol Status Absen -->
   <div class="form-group btn-group-absen">
     <button type="button" id="btnMasuk" onclick="kirimAbsen('Masuk')" class="btn-masuk">📥 MASUK</button>
     <button type="button" id="btnPulang" onclick="kirimAbsen('Pulang')" class="btn-pulang">📤 PULANG</button>
@@ -102,10 +98,43 @@
     let isMirrored = true;
     let namaLoaded = false;
 
+    // Helper untuk merender daftar nama ke elemen <select>
+    function renderDaftarNama(daftarNama) {
+      const select = document.getElementById("nama");
+      select.innerHTML = '<option value="">-- Pilih Nama --</option>';
+      daftarNama.forEach(nama => {
+        const opt = document.createElement("option");
+        opt.value = nama;
+        opt.textContent = nama;
+        select.appendChild(opt);
+      });
+      namaLoaded = true;
+    }
+
     // --- 1. Ambil Nama Karyawan ---
     async function loadNama() {
       const select = document.getElementById("nama");
-      select.innerHTML = '<option value="">Memuat nama karyawan...</option>';
+
+      // Cek apakah sudah pernah dimuat di memori halaman ini
+      if (namaLoaded) return;
+
+      // 1. Coba muat dari LocalStorage (jika ada cache sebelumnya)
+      const cachedNama = localStorage.getItem("daftar_karyawan_cache");
+      if (cachedNama) {
+        try {
+          const parsedData = JSON.parse(cachedNama);
+          if (Array.isArray(parsedData) && parsedData.length > 0) {
+            renderDaftarNama(parsedData);
+          }
+        } catch (e) {
+          console.error("Cache error:", e);
+        }
+      }
+
+      // Jika belum ada cache atau mau memperbarui data di latar belakang
+      if (!namaLoaded) {
+        select.innerHTML = '<option value="">Memuat nama karyawan...</option>';
+      }
 
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 8000);
@@ -121,38 +150,23 @@
 
         clearTimeout(timeoutId);
 
-        if (!res.ok) {
-          throw new Error("HTTP Status " + res.status);
-        }
+        if (!res.ok) throw new Error("HTTP Status " + res.status);
 
         const daftarNama = await res.json();
         
         if (Array.isArray(daftarNama) && daftarNama.length > 0) {
-          select.innerHTML = '<option value="">-- Pilih Nama --</option>';
-          daftarNama.forEach(nama => {
-            const opt = document.createElement("option");
-            opt.value = nama;
-            opt.textContent = nama;
-            select.appendChild(opt);
-          });
-          namaLoaded = true;
-        } else {
+          renderDaftarNama(daftarNama);
+          // Simpan ke localStorage agar selanjutnya bisa diakses instan/offline
+          localStorage.setItem("daftar_karyawan_cache", JSON.stringify(daftarNama));
+        } else if (!namaLoaded) {
           select.innerHTML = '<option value="">Daftar nama kosong</option>';
         }
       } catch (err) {
         console.error("Error load nama:", err);
-        if (err.name === 'AbortError') {
-          select.innerHTML = '<option value="">Koneksi lambat (Sinyal/Server Timeout)</option>';
-        } else {
-          select.innerHTML = '<option value="">Gagal memuat nama (Klik untuk coba lagi)</option>';
+        if (!namaLoaded) {
+          select.innerHTML = '<option value="" onclick="loadNama()">Gagal memuat nama (Klik untuk coba lagi)</option>';
+          namaLoaded = false;
         }
-        namaLoaded = false;
-      }
-    }
-
-    function cekUlangNama() {
-      if (!namaLoaded) {
-        loadNama();
       }
     }
 
@@ -185,7 +199,7 @@
       }
     }
 
-    // --- 4. Ambil Foto (Snapshot Canvas) ---
+    // --- 4. Ambil Foto ---
     function ambilFoto() {
       const video = document.getElementById("video");
       const canvas = document.getElementById("canvas");
@@ -207,7 +221,6 @@
       canvas.width = width;
       canvas.height = height;
 
-      // Jika mode mirror aktif, balikkan gambar di canvas
       if (isMirrored) {
         ctx.translate(width, 0);
         ctx.scale(-1, 1);
@@ -224,7 +237,7 @@
 
       btnAmbil.style.display = "none";
       btnUlang.style.display = "block";
-      btnToggleMirror.style.display = "none"; // Sembunyikan tombol mirror saat foto sudah di-take
+      btnToggleMirror.style.display = "none";
     }
 
     // --- 5. Foto Ulang ---
@@ -243,7 +256,7 @@
 
       btnAmbil.style.display = "block";
       btnUlang.style.display = "none";
-      btnToggleMirror.style.display = "block"; // Tampilkan kembali tombol mirror
+      btnToggleMirror.style.display = "block";
     }
 
     function getPositionOptions(highAccuracy = true) {
