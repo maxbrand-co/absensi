@@ -14,8 +14,22 @@
     select { border: 1px solid #ccc; }
     
     /* Layout Kamera & Pratinjau */
-    .camera-box { position: relative; width: 100%; margin-top: 10px; text-align: center; }
-    video, img { width: 100%; max-height: 300px; object-fit: cover; border-radius: 8px; background: #222; border: 1px solid #ccc; }
+    .camera-box { 
+      position: relative; 
+      width: 100%; 
+      margin-top: 10px; 
+      text-align: center;
+      line-height: 0;
+    }
+
+    video, img { 
+      width: 100%; 
+      max-height: 300px; 
+      object-fit: cover; 
+      border-radius: 8px; 
+      background: #222; 
+      border: 1px solid #ccc; 
+    }
     
     /* CSS Efek Mirror pada Video Preview */
     .mirror {
@@ -23,23 +37,32 @@
       -webkit-transform: scaleX(-1);
     }
 
-    /* Tombol Toggle Mirror dibuat mencolok & jelas */
-    .btn-mirror {
-      background-color: #6c757d;
+    /* Tombol Mirror Melayang di Atas Tampilan Kamera (Pojok Kanan Bawah) */
+    .btn-mirror-overlay {
+      position: absolute;
+      bottom: 12px;
+      right: 12px;
+      z-index: 10;
+      background: rgba(0, 0, 0, 0.6);
       color: white;
-      border: none;
-      margin-top: 8px;
-      margin-bottom: 8px;
-      padding: 10px;
-      font-size: 14px;
-      font-weight: bold;
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      border-radius: 50%;
+      width: 44px;
+      height: 44px;
+      font-size: 20px;
       cursor: pointer;
-      display: block;
-      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+
+    .btn-mirror-overlay:active {
+      background: rgba(0, 0, 0, 0.9);
     }
 
     /* Tombol Aksi */
-    .btn-group-foto { display: flex; gap: 10px; margin-top: 5px; }
+    .btn-group-foto { display: flex; gap: 10px; margin-top: 10px; }
     .btn-group-absen { display: flex; gap: 10px; margin-top: 20px; }
     
     .btn-foto { background-color: #007bff; color: white; font-weight: bold; border: none; cursor: pointer; }
@@ -57,7 +80,7 @@
 
   <h2>Absensi Karyawan CV. Maxbrand</h2>
 
-  <!-- 1. Pilih Nama Karyawan (Dihapus event onclick-nya) -->
+  <!-- 1. Pilih Nama Karyawan -->
   <div class="form-group">
     <label for="nama">Nama Karyawan:</label>
     <select id="nama">
@@ -72,9 +95,10 @@
       <video id="video" class="mirror" autoplay playsinline></video>
       <img id="previewFoto" src="" style="display: none;" />
       <canvas id="canvas" style="display:none;"></canvas>
-    </div>
 
-    <button type="button" id="btnToggleMirror" class="btn-mirror" onclick="toggleMirror()">🔄 Balikkan Kamera (Mirror)</button>
+      <!-- Tombol Overlay Mirror di Kanan Bawah Kamera -->
+      <button type="button" id="btnToggleMirror" class="btn-mirror-overlay" onclick="toggleMirror()" title="Balikkan Kamera">🔄</button>
+    </div>
     
     <div class="btn-group-foto">
       <button type="button" id="btnAmbilFoto" onclick="ambilFoto()" class="btn-foto">📸 Ambil Foto</button>
@@ -98,7 +122,6 @@
     let isMirrored = true;
     let namaLoaded = false;
 
-    // Helper untuk merender daftar nama ke elemen <select>
     function renderDaftarNama(daftarNama) {
       const select = document.getElementById("nama");
       select.innerHTML = '<option value="">-- Pilih Nama --</option>';
@@ -115,10 +138,8 @@
     async function loadNama() {
       const select = document.getElementById("nama");
 
-      // Cek apakah sudah pernah dimuat di memori halaman ini
       if (namaLoaded) return;
 
-      // 1. Coba muat dari LocalStorage (jika ada cache sebelumnya)
       const cachedNama = localStorage.getItem("daftar_karyawan_cache");
       if (cachedNama) {
         try {
@@ -131,7 +152,6 @@
         }
       }
 
-      // Jika belum ada cache atau mau memperbarui data di latar belakang
       if (!namaLoaded) {
         select.innerHTML = '<option value="">Memuat nama karyawan...</option>';
       }
@@ -156,7 +176,6 @@
         
         if (Array.isArray(daftarNama) && daftarNama.length > 0) {
           renderDaftarNama(daftarNama);
-          // Simpan ke localStorage agar selanjutnya bisa diakses instan/offline
           localStorage.setItem("daftar_karyawan_cache", JSON.stringify(daftarNama));
         } else if (!namaLoaded) {
           select.innerHTML = '<option value="">Daftar nama kosong</option>';
@@ -164,7 +183,7 @@
       } catch (err) {
         console.error("Error load nama:", err);
         if (!namaLoaded) {
-          select.innerHTML = '<option value="" onclick="loadNama()">Gagal memuat nama (Klik untuk coba lagi)</option>';
+          select.innerHTML = '<option value="">Gagal memuat nama (Refresh halaman)</option>';
           namaLoaded = false;
         }
       }
@@ -256,7 +275,7 @@
 
       btnAmbil.style.display = "block";
       btnUlang.style.display = "none";
-      btnToggleMirror.style.display = "block";
+      btnToggleMirror.style.display = "flex";
     }
 
     function getPositionOptions(highAccuracy = true) {
