@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+<!-- MAXBRAND ABSENSI | GitHub Pages | Sinkron dengan Code.gs FINAL -->
 <html lang="id">
 <head>
   <meta charset="UTF-8">
@@ -127,264 +128,258 @@
   <div id="status"></div>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbwwKTsVVu39HdMNgGgMDDkRyLO-egl3xXZgVjuq9-34gfgF2qNUmx4mcfKvvx67Jfci/exec"; 
+// Gunakan URL deployment web app Google Apps Script yang sama.
+const API_URL = 'https://script.google.com/macros/s/AKfycbwwKTsVVu39HdMNgGgMDDkRyLO-egl3xXZgVjuq9-34gfgF2qNUmx4mcfKvvx67Jfci/exec';
+const CACHE_NAMA_KEY = 'maxbrand_daftar_nama_v3';
+const CACHE_NAMA_MILIDETIK = 5 * 60 * 1000;
+let isMirrored = true;
+let sedangMengirim = false;
 
-    let isMirrored = true;
-    let namaLoaded = false;
+function tulisStatus(pesan, warna = 'red') {
+  const el = document.getElementById('status');
+  el.style.color = warna;
+  // textContent tidak menafsirkan pesan server sebagai HTML.
+  el.textContent = pesan;
+}
 
-    function renderDaftarNama(daftarNama) {
-      const select = document.getElementById("nama");
-      select.innerHTML = '<option value="">-- Pilih Nama --</option>';
-      daftarNama.forEach(nama => {
-        const opt = document.createElement("option");
-        opt.value = nama;
-        opt.textContent = nama;
-        select.appendChild(opt);
-      });
-      namaLoaded = true;
+function renderDaftarNama(daftarNama) {
+  const select = document.getElementById('nama');
+  const pilihanSaatIni = select.value;
+  select.innerHTML = '';
+  const placeholder = document.createElement('option');
+  placeholder.value = '';
+  placeholder.textContent = '-- Pilih Nama --';
+  select.appendChild(placeholder);
+  daftarNama.forEach(nama => {
+    const opt = document.createElement('option');
+    opt.value = nama;
+    opt.textContent = nama;
+    select.appendChild(opt);
+  });
+  if (daftarNama.includes(pilihanSaatIni)) select.value = pilihanSaatIni;
+}
+
+async function loadNama() {
+  const select = document.getElementById('nama');
+  let adaCacheValid = false;
+  try {
+    const cached = JSON.parse(localStorage.getItem(CACHE_NAMA_KEY) || 'null');
+    if (cached && Array.isArray(cached.data) &&
+        Date.now() - cached.saat < CACHE_NAMA_MILIDETIK && cached.data.length > 0) {
+      renderDaftarNama(cached.data);
+      adaCacheValid = true;
     }
+  } catch (err) {
+    console.warn('Cache daftar nama tidak valid:', err);
+  }
 
-    // --- 1. Ambil Nama Karyawan ---
-    async function loadNama() {
-      const select = document.getElementById("nama");
+  // Tetap mengambil pembaruan server, termasuk saat cache tersedia.
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000);
+    let res;
+    try {
+      res = await fetch(API_URL + '?t=' + Date.now(), {
+        method: 'GET', redirect: 'follow', signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const daftarNama = await res.json();
+    if (!Array.isArray(daftarNama) || daftarNama.length === 0) {
+      throw new Error('Daftar karyawan kosong / tidak tersedia.');
+    }
+    renderDaftarNama(daftarNama);
+    localStorage.setItem(CACHE_NAMA_KEY, JSON.stringify({
+      saat: Date.now(), data: daftarNama
+    }));
+  } catch (err) {
+    console.error('Gagal memuat nama:', err);
+    if (!adaCacheValid) {
+      select.innerHTML = '<option value="">Gagal memuat nama (refresh halaman)</option>';
+      tulisStatus('Daftar karyawan belum dapat dimuat. Coba refresh halaman.');
+    }
+  }
+}
 
-      if (namaLoaded) return;
+function initKamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    tulisStatus('Browser tidak mendukung akses kamera.');
+    return;
+  }
+  navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+    .then(stream => {
+      document.getElementById('video').srcObject = stream;
+    })
+    .catch(err => {
+      console.error('Gagal mengakses kamera:', err);
+      tulisStatus('Gagal mengakses kamera. Periksa izin kamera pada browser.');
+    });
+}
 
-      const cachedNama = localStorage.getItem("daftar_karyawan_cache");
-      if (cachedNama) {
-        try {
-          const parsedData = JSON.parse(cachedNama);
-          if (Array.isArray(parsedData) && parsedData.length > 0) {
-            renderDaftarNama(parsedData);
-          }
-        } catch (e) {
-          console.error("Cache error:", e);
-        }
-      }
+function toggleMirror() {
+  const video = document.getElementById('video');
+  isMirrored = !isMirrored;
+  video.classList.toggle('mirror', isMirrored);
+}
 
-      if (!namaLoaded) {
-        select.innerHTML = '<option value="">Memuat nama karyawan...</option>';
-      }
+function ambilFoto() {
+  const video = document.getElementById('video');
+  if (!video.srcObject || !video.videoWidth || !video.videoHeight) {
+    alert('Kamera belum siap/aktif!');
+    return;
+  }
 
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  // Batasi resolusi foto agar upload dari jaringan HP lebih cepat.
+  const skala = Math.min(1, 1280 / Math.max(video.videoWidth, video.videoHeight));
+  canvas.width = Math.round(video.videoWidth * skala);
+  canvas.height = Math.round(video.videoHeight * skala);
+  if (isMirrored) {
+    ctx.translate(canvas.width, 0);
+    ctx.scale(-1, 1);
+  }
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  const dataBase64 = canvas.toDataURL('image/jpeg', 0.78);
+  document.getElementById('fotoBase64').value = dataBase64;
+
+  const preview = document.getElementById('previewFoto');
+  preview.src = dataBase64;
+  video.style.display = 'none';
+  preview.style.display = 'block';
+  document.getElementById('btnAmbilFoto').style.display = 'none';
+  document.getElementById('btnFotoUlang').style.display = 'block';
+  document.getElementById('btnToggleMirror').style.display = 'none';
+}
+
+function ulangFoto() {
+  const video = document.getElementById('video');
+  const preview = document.getElementById('previewFoto');
+  document.getElementById('fotoBase64').value = '';
+  preview.src = '';
+  preview.style.display = 'none';
+  video.style.display = 'block';
+  document.getElementById('btnAmbilFoto').style.display = 'block';
+  document.getElementById('btnFotoUlang').style.display = 'none';
+  document.getElementById('btnToggleMirror').style.display = 'flex';
+}
+
+function getPositionOptions(highAccuracy = true) {
+  return {
+    enableHighAccuracy: highAccuracy,
+    timeout: highAccuracy ? 10000 : 15000,
+    maximumAge: 0
+  };
+}
+
+function setLoading(isLoading) {
+  sedangMengirim = isLoading;
+  document.getElementById('btnMasuk').disabled = isLoading;
+  document.getElementById('btnPulang').disabled = isLoading;
+  document.getElementById('btnAmbilFoto').disabled = isLoading;
+  document.getElementById('btnFotoUlang').disabled = isLoading;
+}
+
+function pesanErrorGPS(err) {
+  if (err && err.code === 1) return 'Izin lokasi ditolak. Berikan izin GPS pada browser.';
+  if (err && err.code === 2) return 'Lokasi tidak tersedia. Aktifkan GPS dan coba lagi.';
+  if (err && err.code === 3) return 'GPS tidak merespons (timeout). Coba di tempat yang sinyalnya lebih baik.';
+  return 'Gagal mendapatkan lokasi GPS. Coba lagi.';
+}
+
+async function kirimAbsen(statusType) {
+  if (sedangMengirim) return;
+  const nama = document.getElementById('nama').value;
+  const fotoBase64 = document.getElementById('fotoBase64').value;
+  if (!nama) return alert('Pilih nama Anda terlebih dahulu!');
+  if (!fotoBase64) return alert('Silakan ambil foto terlebih dahulu!');
+  if (!navigator.geolocation) return alert('Browser tidak mendukung GPS.');
+
+  setLoading(true);
+  tulisStatus('Mendapatkan lokasi GPS...', 'blue');
+
+  const handleSuccess = async pos => {
+    const lat = pos.coords.latitude;
+    const lon = pos.coords.longitude;
+    const accuracy = pos.coords.accuracy;
+    const akurasiValid = Number.isFinite(accuracy) && accuracy >= 0;
+    const keteranganAkurasi = akurasiValid ? ' (perkiraan akurasi ±' + Math.round(accuracy) + ' m)' : '';
+    tulisStatus('GPS diperoleh' + keteranganAkurasi + '. Mengirim absensi...', 'blue');
+
+    const payload = new URLSearchParams();
+    payload.append('nama', nama);
+    payload.append('status', statusType);
+    payload.append('lat', String(lat));
+    payload.append('long', String(lon));
+    payload.append('accuracy', akurasiValid ? String(accuracy) : '');
+    payload.append('foto', fotoBase64);
+
+    try {
+      // Batas tunggu sisi browser bukan pembatalan pasti proses pada server.
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000);
-
+      const timeoutId = setTimeout(() => controller.abort(), 75000);
+      let response;
       try {
-        const urlFetch = API_URL + "?t=" + new Date().getTime();
-        
-        const res = await fetch(urlFetch, {
-          method: "GET",
-          redirect: "follow",
+        response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: payload.toString(),
+          redirect: 'follow',
           signal: controller.signal
         });
-
+      } finally {
         clearTimeout(timeoutId);
-
-        if (!res.ok) throw new Error("HTTP Status " + res.status);
-
-        const daftarNama = await res.json();
-        
-        if (Array.isArray(daftarNama) && daftarNama.length > 0) {
-          renderDaftarNama(daftarNama);
-          localStorage.setItem("daftar_karyawan_cache", JSON.stringify(daftarNama));
-        } else if (!namaLoaded) {
-          select.innerHTML = '<option value="">Daftar nama kosong</option>';
-        }
-      } catch (err) {
-        console.error("Error load nama:", err);
-        if (!namaLoaded) {
-          select.innerHTML = '<option value="">Gagal memuat nama (Refresh halaman)</option>';
-          namaLoaded = false;
-        }
       }
-    }
-
-    // --- 2. Inisialisasi Kamera Selfie ---
-    function initKamera() {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        alert("Browser Anda tidak mendukung akses kamera.");
-        return;
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      const result = await response.json();
+      if (!result || typeof result.message !== 'string') {
+        throw new Error('Respons server tidak valid.');
       }
-
-      navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" } })
-        .then(stream => { 
-          const video = document.getElementById("video");
-          video.srcObject = stream; 
-        })
-        .catch(err => {
-          console.error("Gagal kamera:", err);
-          alert("Gagal mengakses kamera: " + err.message);
-        });
+      const warna = result.status === 'success' ? 'green' :
+                    result.status === 'info' ? '#aa6a00' : 'red';
+      tulisStatus(result.message, warna);
+      if (result.status === 'success' || result.code === 'duplicate') ulangFoto();
+    } catch (err) {
+      console.error('Gagal mengirim absensi:', err);
+      tulisStatus('Koneksi terputus atau respons server tidak terbaca. Absensi mungkin sudah tercatat. Periksa hasilnya sebelum mencoba kembali.');
+    } finally {
+      setLoading(false);
     }
+  };
 
-    // --- 3. Toggle Mirror ---
-    function toggleMirror() {
-      const video = document.getElementById("video");
-      isMirrored = !isMirrored;
-      if (isMirrored) {
-        video.classList.add("mirror");
-      } else {
-        video.classList.remove("mirror");
-      }
-    }
-
-    // --- 4. Ambil Foto ---
-    function ambilFoto() {
-      const video = document.getElementById("video");
-      const canvas = document.getElementById("canvas");
-      const previewFoto = document.getElementById("previewFoto");
-      const inputFoto = document.getElementById("fotoBase64");
-      
-      const btnAmbil = document.getElementById("btnAmbilFoto");
-      const btnUlang = document.getElementById("btnFotoUlang");
-      const btnToggleMirror = document.getElementById("btnToggleMirror");
-
-      if (!video.srcObject) {
-        alert("Kamera belum siap/aktif!");
-        return;
-      }
-
-      const ctx = canvas.getContext("2d");
-      const width = video.videoWidth || 640;
-      const height = video.videoHeight || 480;
-      canvas.width = width;
-      canvas.height = height;
-
-      if (isMirrored) {
-        ctx.translate(width, 0);
-        ctx.scale(-1, 1);
-      }
-
-      ctx.drawImage(video, 0, 0, width, height);
-      const dataBase64 = canvas.toDataURL("image/jpeg", 0.8);
-
-      inputFoto.value = dataBase64;
-      previewFoto.src = dataBase64;
-
-      video.style.display = "none";
-      previewFoto.style.display = "block";
-
-      btnAmbil.style.display = "none";
-      btnUlang.style.display = "block";
-      btnToggleMirror.style.display = "none";
-    }
-
-    // --- 5. Foto Ulang ---
-    function ulangFoto() {
-      const video = document.getElementById("video");
-      const previewFoto = document.getElementById("previewFoto");
-      const inputFoto = document.getElementById("fotoBase64");
-      
-      const btnAmbil = document.getElementById("btnAmbilFoto");
-      const btnUlang = document.getElementById("btnFotoUlang");
-      const btnToggleMirror = document.getElementById("btnToggleMirror");
-
-      inputFoto.value = "";
-      previewFoto.style.display = "none";
-      video.style.display = "block";
-
-      btnAmbil.style.display = "block";
-      btnUlang.style.display = "none";
-      btnToggleMirror.style.display = "flex";
-    }
-
-    function getPositionOptions(highAccuracy = true) {
-      return {
-        enableHighAccuracy: highAccuracy,
-        timeout: highAccuracy ? 10000 : 15000,
-        maximumAge: 0
-      };
-    }
-
-    // --- 6. Proses Kirim Absensi ---
-    async function kirimAbsen(statusType) {
-      const nama = document.getElementById("nama").value;
-      const fotoBase64 = document.getElementById("fotoBase64").value;
-      const statusDiv = document.getElementById("status");
-
-      if (!nama) return alert("Pilih nama Anda terlebih dahulu!");
-      if (!fotoBase64) return alert("Silakan ambil foto terlebih dahulu sebelum menekan tombol " + statusType + "!");
-
-      if (!navigator.geolocation) {
-        return alert("Browser Anda tidak mendukung fitur lokasi GPS.");
-      }
-
-      setLoading(true);
-      statusDiv.style.color = "blue";
-      statusDiv.innerHTML = "Mendapatkan lokasi GPS & mengirim data...";
-
-      const handleSuccess = async (pos) => {
-        const userLat = pos.coords.latitude;
-        const userLong = pos.coords.longitude;
-
-        const payloadParams = new URLSearchParams();
-        payloadParams.append("nama", nama);
-        payloadParams.append("status", statusType);
-        payloadParams.append("lat", userLat);
-        payloadParams.append("long", userLong);
-        payloadParams.append("foto", fotoBase64);
-
-        try {
-          const response = await fetch(API_URL, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded"
-            },
-            body: payloadParams.toString()
-          });
-          
-          const result = await response.json();
-          
-          if (result && result.message) {
-            statusDiv.style.color = result.status === "success" ? "green" : "red";
-            statusDiv.innerHTML = result.message;
-            if (result.status === "success") {
-              ulangFoto();
-            }
-          } else {
-            statusDiv.style.color = "orange";
-            statusDiv.innerHTML = "Absen terkirim (tanpa respon pesan).";
-          }
-        } catch (err) {
-          console.error("Error kirim absen:", err);
-          statusDiv.style.color = "red";
-          statusDiv.innerHTML = "Terjadi kesalahan koneksi/server saat mengirim absen.";
-        } finally {
+  const handleError = err => {
+    // Jika permintaan GPS pertama timeout, coba satu kali lagi tanpa mode akurasi tinggi.
+    if (err && err.code === 3) {
+      tulisStatus('GPS belum merespons. Mencoba sekali lagi...', 'blue');
+      navigator.geolocation.getCurrentPosition(
+        handleSuccess,
+        fallbackErr => {
+          tulisStatus(pesanErrorGPS(fallbackErr));
           setLoading(false);
-        }
-      };
-
-      const handleError = (err) => {
-        if (err.code === err.TIMEOUT) {
-          statusDiv.innerHTML = "Mencoba ulang mendapatkan lokasi GPS...";
-          navigator.geolocation.getCurrentPosition(
-            handleSuccess,
-            (fallbackErr) => {
-              setLoading(false);
-              statusDiv.style.color = "red";
-              statusDiv.innerHTML = "Gagal mengambil lokasi GPS (Timeout). Pastikan lokasi/GPS di HP aktif.";
-            },
-            getPositionOptions(false)
-          );
-        } else {
-          setLoading(false);
-          statusDiv.style.color = "red";
-          statusDiv.innerHTML = "Gagal mengambil lokasi GPS. Pastikan izin GPS telah diberikan.";
-        }
-      };
-
-      navigator.geolocation.getCurrentPosition(handleSuccess, handleError, getPositionOptions(true));
+        },
+        getPositionOptions(false)
+      );
+      return;
     }
+    tulisStatus(pesanErrorGPS(err));
+    setLoading(false);
+  };
 
-    function setLoading(isLoading) {
-      document.getElementById("btnMasuk").disabled = isLoading;
-      document.getElementById("btnPulang").disabled = isLoading;
-    }
+  try {
+    navigator.geolocation.getCurrentPosition(handleSuccess, handleError, getPositionOptions(true));
+  } catch (err) {
+    tulisStatus('Gagal mengaktifkan GPS: ' + err.message);
+    setLoading(false);
+  }
+}
 
-    document.addEventListener("DOMContentLoaded", function() {
-      loadNama();
-      initKamera();
-    });
+document.addEventListener('DOMContentLoaded', function () {
+  loadNama();
+  initKamera();
+});
+
   </script>
 </body>
 </html>
